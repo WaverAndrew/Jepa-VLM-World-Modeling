@@ -1,0 +1,21 @@
+{
+  "model_name": "facebook/vjepa2-vith-fpc64-256",
+  "device": "cuda",
+  "num_frames": 64,
+  "motion_threshold": 30.0,
+  "n_clusters": 5,
+  "auto_detect_events": true,
+  "output_dir": "results",
+  "visualization": {
+    "style": "seaborn-v0_8",
+    "figsize": [12, 8],
+    "dpi": 300,
+    "show_3d": false
+  },
+  "analysis": {
+    "compute_temporal_dynamics": true,
+    "compute_similarity_matrix": true,
+    "detect_anomalies": true,
+    "anomaly_threshold": 2.0
+  }
+}

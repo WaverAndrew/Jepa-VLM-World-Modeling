@@ -1,0 +1,8 @@
+{
+  "person_enters": [10, 20],
+  "object_falls": [35, 45],
+  "scene_change": [60, 70],
+  "motion_starts": [25, 30],
+  "motion_stops": [50, 55],
+  "person_leaves": [80, 90]
+}
