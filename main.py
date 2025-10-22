@@ -132,8 +132,13 @@ class VJEPA2Pipeline:
         temporal_results = self.embedding_analyzer.analyze_temporal_dynamics(embeddings)
         similarity_matrix = self.embedding_analyzer.compute_embedding_similarity_matrix(embeddings)
         
-        # Step 5: Sliding Window Analysis
-        print("\n=== Step 5: Sliding Window Analysis ===")
+        # Step 5: Visualization Setup
+        print("\n=== Step 5: Visualization Setup ===")
+        output_dir = self.config.get('output_dir', 'results')
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Step 6: Sliding Window Analysis
+        print("\n=== Step 6: Sliding Window Analysis ===")
         sliding_window_results = None
         if self.config.get('enable_sliding_window', True):
             # Load more frames for sliding window analysis
@@ -184,10 +189,8 @@ class VJEPA2Pipeline:
                 'timeline_plot': timeline_plot
             }
         
-        # Step 6: Visualization
-        print("\n=== Step 6: Visualization ===")
-        output_dir = self.config.get('output_dir', 'results')
-        os.makedirs(output_dir, exist_ok=True)
+        # Step 7: Visualization
+        print("\n=== Step 7: Visualization ===")
         
         plot_paths = self.visualizer.create_all_visualizations(
             analysis_results, video_name, output_dir
@@ -207,8 +210,8 @@ class VJEPA2Pipeline:
                 sliding_window_results['timeline_plot']
             ])
         
-        # Step 7: Export results
-        print("\n=== Step 7: Export Results ===")
+        # Step 8: Export results
+        print("\n=== Step 8: Export Results ===")
         self._export_results(
             video_info, analysis_results, embedding_stats, temporal_results,
             manual_events, auto_events, plot_paths, output_dir, sliding_window_results
