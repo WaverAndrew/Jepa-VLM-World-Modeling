@@ -11,6 +11,7 @@ from typing import Dict, Optional, Tuple
 import torch
 import torch.nn.functional as F
 from transformers import AutoModel, AutoVideoProcessor
+import numpy as np
 
 
 class VJEPA2Model:
