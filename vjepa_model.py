@@ -97,18 +97,44 @@ class VJEPA2Model:
         """
         print("Preprocessing video for V-JEPA2...")
         
-        # Convert tensor to numpy for processor
-        frames_np = frames_tensor.squeeze(0).permute(0, 2, 3, 1).numpy()  # [T, H, W, C]
-        frames_np = (frames_np * 255).astype(np.uint8)  # Denormalize
-        
-        # Use processor
+        # Convert tensor to numpy for processor (expects uint8 RGB frames [T, H, W, C])
+        frames_np = frames_tensor.squeeze(0).permute(0, 2, 3, 1).detach().cpu().numpy()
+        # If values look normalized to 0-1, rescale to 0-255
+        if frames_np.max() <= 1.0:
+            frames_np = (frames_np * 255.0).clip(0, 255)
+        frames_np = frames_np.astype(np.uint8)
+
+        # Use processor (it may return different key names across versions)
         inputs = self.processor(frames_np, return_tensors="pt")
         
         # Move to device
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        
-        print(f"Preprocessed inputs shape: {inputs['pixel_values'].shape}")
+        inputs = {k: (v.to(self.device) if isinstance(v, torch.Tensor) else v) for k, v in inputs.items()}
+
+        # Best-effort report of primary input tensor shape
+        key = self._get_primary_input_key(inputs)
+        if key is not None:
+            print(f"Preprocessed inputs shape ({key}): {inputs[key].shape}")
+        else:
+            print(f"Preprocessed inputs keys: {list(inputs.keys())}")
         return inputs
+
+    def _get_primary_input_key(self, inputs: Dict[str, torch.Tensor]) -> Optional[str]:
+        """Return the canonical tensor key used by the processor/model."""
+        candidate_keys = [
+            'pixel_values',              # common for video/image processors
+            'video_values',              # some video processors
+            'pixel_values_videos',       # alternative naming
+            'videos',                    # rare
+            'inputs',                    # generic
+        ]
+        for k in candidate_keys:
+            if k in inputs and isinstance(inputs[k], torch.Tensor):
+                return k
+        # fallback: first tensor value
+        for k, v in inputs.items():
+            if isinstance(v, torch.Tensor):
+                return k
+        return None
     
     def extract_embeddings(self, inputs: Dict[str, torch.Tensor]) -> torch.Tensor:
         """
