@@ -46,12 +46,22 @@ class EmbeddingAnalyzer:
         """
         print("Analyzing embedding trajectory...")
         
-        # Move to CPU for analysis
-        embeddings_cpu = embeddings.cpu().numpy()
-        
-        # Flatten spatial dimensions for trajectory analysis
-        # Shape: (batch_size, num_patches, embedding_dim) -> (batch_size, embedding_dim)
-        embeddings_flat = einops.reduce(embeddings_cpu, 'b p d -> b d', reduction='mean')
+        # Normalize input to shape [num_samples, embedding_dim]
+        emb = embeddings.detach().cpu()
+        if emb.ndim == 3:
+            b, s, d = emb.shape
+            if b > 1:
+                # Average over sequence tokens per sample
+                embeddings_flat = einops.reduce(emb.numpy(), 'b s d -> b d', reduction='mean')
+            else:
+                # Treat sequence tokens as samples when batch==1
+                embeddings_flat = emb.squeeze(0).numpy()  # [s, d]
+        elif emb.ndim == 2:
+            embeddings_flat = emb.numpy()
+        else:
+            # Fallback: collapse all but last dim into samples
+            last_dim = emb.shape[-1]
+            embeddings_flat = emb.reshape(-1, last_dim).numpy()
         
         # Compute distances between consecutive frames
         distances = np.linalg.norm(np.diff(embeddings_flat, axis=0), axis=1)
@@ -65,12 +75,17 @@ class EmbeddingAnalyzer:
             )[0, 0]
             similarities.append(sim)
         
-        # Apply PCA for visualization
-        pca = PCA(n_components=2)
+        # Apply PCA for visualization (robust to small sample counts)
+        n_samples, n_features = embeddings_flat.shape
+        n_components = 2 if min(n_samples, n_features) >= 2 else 1
+        pca = PCA(n_components=n_components)
         embeddings_pca = pca.fit_transform(embeddings_flat)
+        # Pad to 2D for downstream plotting
+        if n_components == 1:
+            embeddings_pca = np.concatenate([embeddings_pca, np.zeros_like(embeddings_pca)], axis=1)
         
         # K-means clustering
-        n_clusters = min(self.n_clusters, len(embeddings_flat) // 10)
+        n_clusters = min(self.n_clusters, max(1, len(embeddings_flat) // 10))
         if n_clusters > 1:
             kmeans = KMeans(n_clusters=n_clusters, random_state=self.random_state)
             cluster_labels = kmeans.fit_predict(embeddings_flat)
@@ -90,7 +105,7 @@ class EmbeddingAnalyzer:
             'cluster_labels': cluster_labels,
             'event_stats': event_stats,
             'auto_events': auto_events,
-            'explained_variance': pca.explained_variance_ratio_,
+            'explained_variance': pca.explained_variance_ratio_ if hasattr(pca, 'explained_variance_ratio_') else np.array([1.0, 0.0]),
             'pca_components': pca.components_,
             'cluster_centers': kmeans.cluster_centers_ if n_clusters > 1 else None
         }

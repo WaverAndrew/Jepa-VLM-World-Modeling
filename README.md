@@ -40,6 +40,7 @@ vjepa_encoder/
 ├── vjepa_model.py         # V-JEPA2 model wrapper with CUDA optimization
 ├── event_detector.py      # Event detection (manual + automatic)
 ├── embedding_analyzer.py   # Geometric analysis of embeddings
+├── sliding_window_analyzer.py # Sliding window similarity analysis
 ├── visualizer.py          # Publication-ready visualizations
 ├── requirements.txt       # Dependencies
 ├── config_example.json    # Example configuration
@@ -65,7 +66,9 @@ python main.py \
   --events events_example.json \
   --output-dir results/ \
   --auto-detect-events \
-  --num-frames 64
+  --num-frames 64 \
+  --window-size 16 \
+  --stride 8
 ```
 
 ## 🔧 Modular Components

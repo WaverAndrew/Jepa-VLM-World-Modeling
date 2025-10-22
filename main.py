@@ -19,6 +19,7 @@ import pandas as pd
 # Import our modules
 from embedding_analyzer import EmbeddingAnalyzer
 from event_detector import EventDetector
+from sliding_window_analyzer import SlidingWindowAnalyzer
 from vjepa_model import VJEPA2Model
 from video_processor import VideoProcessor
 from visualizer import EmbeddingVisualizer
@@ -39,6 +40,7 @@ class VJEPA2Pipeline:
         self.model_wrapper = None
         self.event_detector = None
         self.embedding_analyzer = None
+        self.sliding_window_analyzer = None
         self.visualizer = None
         
         self.results = {}
@@ -46,7 +48,9 @@ class VJEPA2Pipeline:
     def setup_components(self, model_name: str = "facebook/vjepa2-vith-fpc64-256",
                        device: Optional[str] = None,
                        motion_threshold: float = 30.0,
-                       n_clusters: int = 5):
+                       n_clusters: int = 5,
+                       window_size: int = 16,
+                       stride: int = 8):
         """
         Setup all pipeline components.
         
@@ -55,6 +59,8 @@ class VJEPA2Pipeline:
             device: Device to use
             motion_threshold: Motion detection threshold
             n_clusters: Number of clusters for analysis
+            window_size: Size of sliding windows
+            stride: Stride between sliding windows
         """
         print("Setting up pipeline components...")
         
@@ -63,6 +69,9 @@ class VJEPA2Pipeline:
         self.model_wrapper = VJEPA2Model(model_name=model_name, device=device)
         self.event_detector = EventDetector(motion_threshold=motion_threshold)
         self.embedding_analyzer = EmbeddingAnalyzer(n_clusters=n_clusters)
+        self.sliding_window_analyzer = SlidingWindowAnalyzer(
+            window_size=window_size, stride=stride
+        )
         self.visualizer = EmbeddingVisualizer()
         
         print("Pipeline components ready!")
@@ -123,8 +132,60 @@ class VJEPA2Pipeline:
         temporal_results = self.embedding_analyzer.analyze_temporal_dynamics(embeddings)
         similarity_matrix = self.embedding_analyzer.compute_embedding_similarity_matrix(embeddings)
         
-        # Step 5: Visualization
-        print("\n=== Step 5: Visualization ===")
+        # Step 5: Sliding Window Analysis
+        print("\n=== Step 5: Sliding Window Analysis ===")
+        sliding_window_results = None
+        if self.config.get('enable_sliding_window', True):
+            # Load more frames for sliding window analysis
+            sliding_frames = self.video_processor.load_video(video_path, num_frames=128)
+            
+            # Create sliding windows
+            windows = self.sliding_window_analyzer.create_sliding_windows(sliding_frames)
+            
+            # Encode windows
+            window_embeddings = self.sliding_window_analyzer.encode_windows(
+                windows, self.model_wrapper, self.video_processor
+            )
+            
+            # Compute similarities
+            window_similarities = self.sliding_window_analyzer.compute_window_similarities(
+                window_embeddings
+            )
+            
+            # Detect scene changes
+            scene_changes = self.sliding_window_analyzer.detect_scene_changes(
+                window_similarities
+            )
+            
+            # Analyze temporal dynamics
+            temporal_analysis = self.sliding_window_analyzer.analyze_temporal_dynamics(
+                window_similarities
+            )
+            
+            # Create visualizations
+            similarity_plot = self.sliding_window_analyzer.create_similarity_plot(
+                window_similarities, scene_changes, temporal_analysis, video_name, output_dir
+            )
+            
+            timeline_plot = self.sliding_window_analyzer.create_window_timeline(
+                window_similarities, scene_changes, video_name, output_dir
+            )
+            
+            # Export results
+            self.sliding_window_analyzer.export_results(
+                window_similarities, scene_changes, temporal_analysis, video_name, output_dir
+            )
+            
+            sliding_window_results = {
+                'similarities': window_similarities,
+                'scene_changes': scene_changes,
+                'temporal_analysis': temporal_analysis,
+                'similarity_plot': similarity_plot,
+                'timeline_plot': timeline_plot
+            }
+        
+        # Step 6: Visualization
+        print("\n=== Step 6: Visualization ===")
         output_dir = self.config.get('output_dir', 'results')
         os.makedirs(output_dir, exist_ok=True)
         
@@ -139,11 +200,18 @@ class VJEPA2Pipeline:
         if heatmap_path:
             plot_paths.append(heatmap_path)
         
-        # Step 6: Export results
-        print("\n=== Step 6: Export Results ===")
+        # Add sliding window plots
+        if sliding_window_results:
+            plot_paths.extend([
+                sliding_window_results['similarity_plot'],
+                sliding_window_results['timeline_plot']
+            ])
+        
+        # Step 7: Export results
+        print("\n=== Step 7: Export Results ===")
         self._export_results(
             video_info, analysis_results, embedding_stats, temporal_results,
-            manual_events, auto_events, plot_paths, output_dir
+            manual_events, auto_events, plot_paths, output_dir, sliding_window_results
         )
         
         # Store results
@@ -155,6 +223,7 @@ class VJEPA2Pipeline:
             'manual_events': manual_events,
             'auto_events': auto_events,
             'plot_paths': plot_paths,
+            'sliding_window_results': sliding_window_results,
             'model_info': self.model_wrapper.get_model_info()
         }
         
@@ -164,7 +233,8 @@ class VJEPA2Pipeline:
     def _export_results(self, video_info: Dict, analysis_results: Dict,
                       embedding_stats: Dict, temporal_results: Dict,
                       manual_events: Dict, auto_events: Optional[List[int]],
-                      plot_paths: List[str], output_dir: str):
+                      plot_paths: List[str], output_dir: str,
+                      sliding_window_results: Optional[Dict] = None):
         """Export all results to files."""
         
         video_name = video_info['name']
@@ -305,6 +375,12 @@ Examples:
     parser.add_argument("--device", help="Device to use (cuda/cpu/mps)")
     parser.add_argument("--n-clusters", type=int, default=5,
                        help="Number of clusters for analysis")
+    parser.add_argument("--window-size", type=int, default=16,
+                       help="Size of sliding windows")
+    parser.add_argument("--stride", type=int, default=8,
+                       help="Stride between sliding windows")
+    parser.add_argument("--disable-sliding-window", action="store_true",
+                       help="Disable sliding window analysis")
     parser.add_argument("--benchmark", action="store_true",
                        help="Run benchmark mode")
     parser.add_argument("--config", help="Path to configuration JSON file")
@@ -327,7 +403,10 @@ Examples:
         'motion_threshold': args.motion_threshold,
         'model_name': args.model,
         'device': args.device,
-        'n_clusters': args.n_clusters
+        'n_clusters': args.n_clusters,
+        'window_size': args.window_size,
+        'stride': args.stride,
+        'enable_sliding_window': not args.disable_sliding_window
     })
     
     # Initialize pipeline
@@ -338,7 +417,9 @@ Examples:
         model_name=config['model_name'],
         device=config['device'],
         motion_threshold=config['motion_threshold'],
-        n_clusters=config['n_clusters']
+        n_clusters=config['n_clusters'],
+        window_size=config['window_size'],
+        stride=config['stride']
     )
     
     # Run pipeline
