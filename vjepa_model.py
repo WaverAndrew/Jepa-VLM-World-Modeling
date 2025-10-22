@@ -150,7 +150,7 @@ class VJEPA2Model:
         
         with torch.no_grad():
             if self.device == "cuda" and self.scaler is not None:
-                with torch.cuda.amp.autocast():
+                with torch.amp.autocast('cuda'):
                     outputs = self.model(**inputs)
             else:
                 outputs = self.model(**inputs)
@@ -216,7 +216,7 @@ class VJEPA2Model:
             
             with torch.no_grad():
                 if self.device == "cuda" and self.scaler is not None:
-                    with torch.cuda.amp.autocast():
+                    with torch.amp.autocast('cuda'):
                         _ = self.model(**inputs)
                 else:
                     _ = self.model(**inputs)

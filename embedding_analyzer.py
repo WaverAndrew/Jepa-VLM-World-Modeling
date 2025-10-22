@@ -202,27 +202,75 @@ class EmbeddingAnalyzer:
         """
         embeddings_cpu = embeddings.cpu().numpy()
         
-        # Compute temporal derivatives
-        temporal_diff = np.diff(embeddings_cpu, axis=0)
-        temporal_acceleration = np.diff(temporal_diff, axis=0)
+        # Handle different input shapes
+        if embeddings_cpu.ndim == 3:
+            # [batch, seq, dim] - treat sequence as temporal dimension
+            if embeddings_cpu.shape[0] == 1:
+                # Single batch: use sequence dimension
+                embeddings_temporal = embeddings_cpu[0]  # [seq, dim]
+            else:
+                # Multiple batches: average over batch dimension
+                embeddings_temporal = embeddings_cpu.mean(axis=0)  # [seq, dim]
+        elif embeddings_cpu.ndim == 2:
+            # [seq, dim] - already temporal
+            embeddings_temporal = embeddings_cpu
+        else:
+            # Flatten to 2D
+            embeddings_temporal = embeddings_cpu.reshape(-1, embeddings_cpu.shape[-1])
         
-        # Compute velocity and acceleration magnitudes
+        # Ensure we have enough temporal samples
+        if len(embeddings_temporal) < 2:
+            return {
+                'velocity_magnitude': np.array([]),
+                'acceleration_magnitude': np.array([]),
+                'velocity_peaks': np.array([]),
+                'acceleration_peaks': np.array([]),
+                'mean_velocity': 0.0,
+                'mean_acceleration': 0.0
+            }
+        
+        # Compute temporal derivatives
+        temporal_diff = np.diff(embeddings_temporal, axis=0)
+        
+        # Compute velocity magnitude (ensure 1D)
         velocity_magnitude = np.linalg.norm(temporal_diff, axis=-1)
-        acceleration_magnitude = np.linalg.norm(temporal_acceleration, axis=-1)
+        if velocity_magnitude.ndim > 1:
+            velocity_magnitude = velocity_magnitude.flatten()
+        
+        # Compute acceleration if we have enough samples
+        if len(temporal_diff) > 1:
+            temporal_acceleration = np.diff(temporal_diff, axis=0)
+            acceleration_magnitude = np.linalg.norm(temporal_acceleration, axis=-1)
+            if acceleration_magnitude.ndim > 1:
+                acceleration_magnitude = acceleration_magnitude.flatten()
+        else:
+            acceleration_magnitude = np.array([])
         
         # Find peaks in velocity and acceleration
         from scipy.signal import find_peaks
         
-        velocity_peaks, _ = find_peaks(velocity_magnitude, height=np.mean(velocity_magnitude))
-        acceleration_peaks, _ = find_peaks(acceleration_magnitude, height=np.mean(acceleration_magnitude))
+        velocity_peaks = np.array([])
+        acceleration_peaks = np.array([])
+        
+        if len(velocity_magnitude) > 0 and np.std(velocity_magnitude) > 0:
+            try:
+                velocity_peaks, _ = find_peaks(velocity_magnitude, height=np.mean(velocity_magnitude))
+            except:
+                velocity_peaks = np.array([])
+        
+        if len(acceleration_magnitude) > 0 and np.std(acceleration_magnitude) > 0:
+            try:
+                acceleration_peaks, _ = find_peaks(acceleration_magnitude, height=np.mean(acceleration_magnitude))
+            except:
+                acceleration_peaks = np.array([])
         
         return {
             'velocity_magnitude': velocity_magnitude,
             'acceleration_magnitude': acceleration_magnitude,
             'velocity_peaks': velocity_peaks,
             'acceleration_peaks': acceleration_peaks,
-            'mean_velocity': np.mean(velocity_magnitude),
-            'mean_acceleration': np.mean(acceleration_magnitude)
+            'mean_velocity': np.mean(velocity_magnitude) if len(velocity_magnitude) > 0 else 0.0,
+            'mean_acceleration': np.mean(acceleration_magnitude) if len(acceleration_magnitude) > 0 else 0.0
         }
     
     def compute_embedding_similarity_matrix(self, embeddings: torch.Tensor) -> np.ndarray:
